@@ -199,7 +199,7 @@ Copier `.env.example` vers `.env` et renseigner toutes les valeurs avant de dém
 
 ```env
 # ─── Base de Données ──────────────────────────────────
-DATABASE_URL="postgresql://user:password@localhost:5432/tradelink"
+DATABASE_URL="postgresql://postgres:replace-with-a-unique-local-secret@localhost:5432/tradelink"
 
 # ─── Authentification ─────────────────────────────────
 JWT_SECRET="your-super-secret-jwt-key"
@@ -1027,15 +1027,14 @@ pnpm test:e2e                         # Tests E2E
 8. ✅ **13 autres modules** : Scaffoldés avec endpoints + DTOs (Catalog, Orders, Invoices, Payments, Shipments, Accounting, OCR, AI, Rooms, Tickets, Notifications, FloatingButtons, Admin)
 9. ✅ **Tests API** : Workflow d'authentification complet validé via curl
 
-**Serveur en cours d'exécution** :
-- Process : `pnpm dev` dans `/home/ro0t_/Projects/TradeLink SAAS/apps/api`
+**Lancement local** :
+- Process : `pnpm dev` depuis `apps/api`
 - Port : 3001
 - Swagger : http://localhost:3001/api/docs
-- ⚠️ **Le serveur doit rester actif** pour continuer les tests
 
 **Fichiers critiques** :
-- `.env` : `/home/ro0t_/Projects/TradeLink SAAS/apps/api/.env` (contient toutes les variables d'environnement)
-- `schema.prisma` : `/home/ro0t_/Projects/TradeLink SAAS/apps/api/prisma/schema.prisma` (35 modèles)
+- `.env` : `apps/api/.env` (fichier local ignoré par Git)
+- `schema.prisma` : `apps/api/prisma/schema.prisma` (35 modèles)
 - `docker-compose.yml` : À la racine du projet (PostgreSQL 16 configuré)
 
 ### 🎯 Ce qu'il Reste à Faire
@@ -1226,13 +1225,13 @@ curl -X POST http://localhost:3001/api/auth/login \
 
 ### ⚠️ Points d'Attention
 
-1. **Le serveur backend est ACTIF** : Ne pas le redémarrer sauf si nécessaire. Utiliser `pnpm dev` pour le hot-reload.
-2. **PostgreSQL** : Le container Docker `tradelink-postgres` tourne sur port 5432 avec credentials `postgres:password`.
+1. **Backend local** : Depuis la racine, lancer `pnpm --filter @tradelink/api dev` pour démarrer le serveur.
+2. **PostgreSQL** : Le conteneur utilise les valeurs définies dans le fichier `.env` local.
 3. **Migrations Prisma** : Toutes les tables sont créées. Pour modifier le schéma, éditer `schema.prisma` puis lancer `pnpm prisma migrate dev --name <nom>`.
 4. **OTP en Dev** : Les codes OTP sont loggés dans la console du serveur (ligne `[OTP - EMAIL/SMS] User <userId> | Purpose: <purpose> | Code: <code>`).
 5. **Swagger** : Tous les endpoints sont documentés automatiquement via decorators `@ApiTags()`, `@ApiOperation()`, `@ApiResponse()`.
 6. **RBAC** : Les routes protégées utilisent `@Roles(Role.ADMIN)` + `JwtAuthGuard`. Les routes publiques utilisent `@Public()`.
-7. **Environment Variables** : Le fichier `.env` contient toutes les clés. **Ne jamais commit le `.env` réel** (utiliser `.env.example`).
+7. **Environment Variables** : Les fichiers `.env` contiennent les valeurs locales. **Ne jamais les commit** (utiliser `.env.example`).
 
 ### 📞 Questions Suggérées pour le Prochain Agent
 

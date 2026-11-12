@@ -1,0 +1,29 @@
+node_modules/
+dist/
+.next/
+.env*
+!.env.example
+uploads/
+*.log
+.turbo/
+.cache/
+coverage/
+.DS_Store
+*.pem
+*.key
+playwright-report/
+test-results/
+
+# Local agent and design artifacts
+.10x/
+.agents/
+.claude/
+.taste-skill/
+.vscode/
+graphify-out/
+
+# This workspace uses pnpm; ignore npm lockfiles from local installs.
+**/package-lock.json
+
+# Local recovery helper intentionally disables administrator MFA.
+apps/api/disable-admin-mfa.ts

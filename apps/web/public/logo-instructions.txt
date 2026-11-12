@@ -1,0 +1,6 @@
+Le logo officiel TradeLink est installé dans `logo.png`.
+
+- `logo-wordmark.png` : version horizontale pour l’en-tête, la connexion et la navigation.
+- `logistics-hero.webp` : illustration extraite du logo pour la page d’accueil.
+
+Conserver `logo.png` comme source originale lors de la création de nouveaux formats.

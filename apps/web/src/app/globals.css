@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import './design-tokens.css';
+
+/* The design-tokens.css now contains all base styles, typography, layout utilities,
+   component primitives, and motion helpers. This file only needs Tailwind imports. */

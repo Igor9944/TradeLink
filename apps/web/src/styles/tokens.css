@@ -1,0 +1,139 @@
+/* TradeLink Design Tokens — One Motif Direction */
+/* Generated from direction sheet seed 633406470 */
+
+:root {
+  /* Colour tokens — Black & Crimson palette */
+  --bg: #0a0a0a;
+  --surface: #151515;
+  --ink: #efefef;
+  --muted: #8c8c8c;
+  --accent: #b11226;
+  --accent-ink: #ffffff;
+  --field-1: #efefef;
+  --field-1-ink: #0a0a0a;
+
+  /* Typography tokens — Libre Franklin / Source Serif 4 */
+  --font-display: 'Libre Franklin', system-ui, sans-serif;
+  --font-text: 'Source Serif 4', Georgia, serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', monospace;
+
+  /* Type scale — fluid steps from direction sheet */
+  --step-small: clamp(0.8125rem, 0.79rem + 0.1vw, 0.875rem);   /* 13–14px */
+  --step-body: clamp(1.0625rem, 1rem + 0.25vw, 1.1875rem);      /* 17–19px */
+  --step-lead: clamp(1.25rem, 1.1rem + 0.7vw, 1.625rem);        /* 20–26px */
+  --step-head: clamp(2rem, 1.3rem + 3.2vw, 4rem);               /* 32–64px */
+
+  /* Display settings from direction */
+  --display-tracking: -0.035em;
+  --display-leading: 0.92;
+  --text-leading: 1.55;
+
+  /* Radius tokens */
+  --radius-card: 8px;
+  --radius-control: 6px;
+
+  /* Space tokens */
+  --gap: 12px;
+  --gap-sm: 8px;
+  --pad: 24px;
+  --pad-lg: 40px;
+
+  /* Section rhythm */
+  --section-gap: clamp(120px, 8vw, 240px);
+
+  /* Container */
+  --max-width: 1280px;
+  --outer-margin: 24px;
+
+  /* Motion tokens */
+  --motion-duration-fast: 160ms;
+  --motion-duration-base: 240ms;
+  --motion-duration-slow: 400ms;
+  --motion-ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --motion-ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --motion-stagger: 60ms;
+  --motion-rise: 16px;
+
+  /* Z-index layers */
+  --z-base: 1;
+  --z-nav: 100;
+  --z-dialog: 200;
+  --z-toast: 300;
+  --z-tooltip: 400;
+}
+
+/* Dark mode is default; light mode for inverted sections */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #efefef;
+    --surface: #fafafa;
+    --ink: #0a0a0a;
+    --muted: #6b6b6b;
+    --accent: #b11226;
+    --accent-ink: #ffffff;
+    --field-1: #0a0a0a;
+    --field-1-ink: #efefef;
+  }
+}
+
+/* Explicit theme overrides */
+[data-theme="dark"] {
+  --bg: #0a0a0a;
+  --surface: #151515;
+  --ink: #efefef;
+  --muted: #8c8c8c;
+  --field-1: #efefef;
+  --field-1-ink: #0a0a0a;
+}
+
+[data-theme="light"] {
+  --bg: #efefef;
+  --surface: #fafafa;
+  --ink: #0a0a0a;
+  --muted: #6b6b6b;
+  --field-1: #0a0a0a;
+  --field-1-ink: #efefef;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration-fast: 0ms;
+    --motion-duration-base: 0ms;
+    --motion-duration-slow: 0ms;
+    --motion-stagger: 0ms;
+    --motion-rise: 0px;
+  }
+}
+
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Selection styles */
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* Utility classes for token access */
+.bg { background: var(--bg); }
+.surface { background: var(--surface); }
+.ink { color: var(--ink); }
+.muted { color: var(--muted); }
+.accent { color: var(--accent); }
+.field-1 { background: var(--field-1); color: var(--field-1-ink); }
+
+.font-display { font-family: var(--font-display); font-weight: 700; letter-spacing: var(--display-tracking); line-height: var(--display-leading); }
+.font-text { font-family: var(--font-text); line-height: var(--text-leading); }
+.font-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.step-small { font-size: var(--step-small); }
+.step-body { font-size: var(--step-body); }
+.step-lead { font-size: var(--step-lead); }
+.step-head { font-size: var(--step-head); }
+
+.radius-card { border-radius: var(--radius-card); }
+.radius-control { border-radius: var(--radius-control); }

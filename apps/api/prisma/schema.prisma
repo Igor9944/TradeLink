@@ -1,0 +1,1117 @@
+// ============================================================
+//  TRADELINK – Schéma Prisma Complet (Version 5.0)
+//  Stack : PostgreSQL 16 · Prisma ORM · NestJS
+//  i18n  : JSON pour champs courts (name, title),
+//          Table de traduction pour contenus longs (description)
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 1 – ENUMS
+// ─────────────────────────────────────────────────────────────
+
+/// Les 6 rôles métier + les 2 services (IA, Système)
+enum Role {
+  VISITOR
+  CLIENT
+  SUPPLIER
+  TRANSPORTER
+  ACCOUNTANT
+  SUPPORT
+  ADMIN
+}
+
+enum Lang {
+  FR
+  EN
+  AR
+}
+
+enum UserStatus {
+  PENDING_KYC // Inscrit, KYC non encore soumis
+  KYC_SUBMITTED // Documents soumis, en attente de validation Admin
+  ACTIVE // KYC validé, compte pleinement actif
+  SUSPENDED // KYC non validé à J+7 ou suspension manuelle
+  BANNED // Banni définitivement par l'Admin
+}
+
+enum KycStatus {
+  PENDING
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum KycDocumentType {
+  // Client
+  NATIONAL_ID // CIN
+  // Fournisseur
+  MANAGER_ID // CIN du gérant
+  BUSINESS_LICENSE // Patente
+  COMPANY_REGISTRATION // RNE
+  // Transporteur
+  DRIVER_LICENSE // Permis de conduire
+  VEHICLE_REGISTRATION // Carte grise
+  VEHICLE_INSURANCE // Assurance
+}
+
+enum OrderStatus {
+  DRAFT
+  PENDING
+  CONFIRMED
+  IN_PREPARATION
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  DISPUTED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum ShipmentStatus {
+  ASSIGNED // Mission assignée au transporteur
+  PICKUP // En route pour l'enlèvement
+  PICKED_UP // Marchandise enlevée
+  IN_TRANSIT // En transit
+  OUT_FOR_DELIVERY // En cours de livraison
+  DELIVERED // Livré
+  FAILED // Échec de livraison
+  RETURNED // Retourné
+}
+
+enum DocumentType {
+  INVOICE // Facture
+  QUOTE // Devis
+  DELIVERY_NOTE // Bon de livraison
+  PREPARATION_NOTE // Bon de préparation
+  CMR // Lettre de voiture internationale
+  CUSTOMS_DECLARATION // Déclaration douanière
+  PROOF_OF_DELIVERY // Preuve de livraison
+  KYC_DOCUMENT // Document KYC
+  OCR_IMPORT // Document importé via OCR
+  ROOM_SUMMARY // Compte rendu de Room Live
+}
+
+enum OcrStatus {
+  UPLOADED
+  PROCESSING
+  ANALYZED
+  VALIDATED
+  INTEGRATED
+  FAILED
+}
+
+enum RoomStatus {
+  SCHEDULED // Planifiée
+  WAITING // Salle d'attente active
+  LIVE // En cours
+  ENDED // Terminée
+  CANCELLED // Annulée
+}
+
+enum RoomType {
+  INSTANT // Démarrée immédiatement
+  SCHEDULED // Planifiée à l'avance
+}
+
+enum ParticipantRole {
+  HOST
+  MODERATOR
+  PARTICIPANT
+}
+
+enum ParticipantStatus {
+  WAITING
+  ADMITTED
+  REJECTED
+  LEFT
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  WHATSAPP
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  LOGIN_FAILED
+  MFA_ENABLED
+  MFA_DISABLED
+  MFA_VERIFIED
+  MFA_RECOVERY_USED
+  KYC_APPROVED
+  KYC_REJECTED
+  ACCOUNT_SUSPENDED
+  ACCOUNT_REACTIVATED
+  FIELD_CREATED // Nouveau champ OCR validé
+  EXPORT
+  ROOM_STARTED
+  ROOM_ENDED
+  PAYMENT_PROCESSED
+}
+
+enum FloatingButtonTarget {
+  ALL
+  CLIENT
+  SUPPLIER
+  TRANSPORTER
+  ACCOUNTANT
+  SUPPORT
+  ADMIN
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 2 – AUTH & UTILISATEURS
+// ─────────────────────────────────────────────────────────────
+
+/// Compte utilisateur central – tous les rôles partagent ce modèle
+model User {
+  id            String     @id @default(uuid())
+  email         String?    @unique
+  phone         String?    @unique
+  passwordHash  String?
+  role          Role       @default(CLIENT)
+  status        UserStatus @default(PENDING_KYC)
+  preferredLang Lang       @default(FR)
+
+  // KYC
+  kycDeadline    DateTime? // J+7 depuis l'inscription
+  kycSubmittedAt DateTime?
+  kycValidatedAt DateTime?
+
+  // MFA (obligatoire pour Admin)
+  mfaEnabled    Boolean @default(false)
+  mfaSecret     String? // Secret TOTP chiffré (AES-256-GCM encrypted)
+  recoveryCodes String? // Codes de récupération (comma-separated, hashed)
+
+  // Profil (nom multilingue en JSON : { fr: "...", en: "...", ar: "..." })
+  displayName Json? // { fr, en, ar }
+  avatarUrl   String?
+  timezone    String? @default("Africa/Tunis")
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastLoginAt DateTime?
+
+  // Relations
+  sessions      UserSession[]
+  devices       UserDevice[]
+  kyc           KycRecord?
+  otpCodes      OtpCode[]
+  notifications Notification[]
+  auditLogs     AuditLog[]     @relation("AuditActor")
+
+  // Métier
+  clientOrders         Order[]    @relation("ClientOrders")
+  supplierOrders       Order[]    @relation("SupplierOrders")
+  supplierProducts     Product[]
+  transporterShipments Shipment[]
+
+  // IA & Outils
+  voiceCommandLogs   VoiceCommandLog[]
+  ocrDocuments       OcrDocument[]
+  calculationPeriods CalculationPeriod[]
+
+  // Room Live
+  hostedRooms      Room[]            @relation("RoomHost")
+  roomParticipants RoomParticipant[]
+  roomMessages     RoomChatMessage[]
+
+  // Support
+  createdTickets        Ticket[]             @relation("TicketCreator")
+  assignedTickets       Ticket[]             @relation("TicketAssignee")
+  reviewedKycRecords    KycRecord[]          @relation("KycReviewer")
+  approvedDynamicFields DynamicFieldSchema[] @relation("DynamicFieldApprover")
+  generatedDocuments    GeneratedDocument[]  @relation("GeneratedDocumentCreator")
+  sentTicketMessages    TicketMessage[]
+  updatedSystemConfigs  SystemConfig[]       @relation("SystemConfigUpdater")
+
+  @@index([role, status])
+  @@map("users")
+}
+
+/// Sessions JWT actives (une seule session par appareil)
+model UserSession {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  refreshToken String  @unique // Hash du refresh token
+  deviceInfo   String? // User-Agent
+  ipAddress    String?
+  isRevoked    Boolean @default(false)
+
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  lastUsedAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("user_sessions")
+}
+
+/// Appareils de confiance enregistrés par l'utilisateur
+model UserDevice {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceName        String? // ex: "MacBook Pro de John"
+  deviceFingerprint String   @unique // Empreinte navigateur/appareil
+  isTrusted         Boolean  @default(false)
+  lastSeenAt        DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("user_devices")
+}
+
+/// Codes OTP (inscription, réinitialisation mdp, MFA)
+model OtpCode {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  code    String // Hash du code
+  purpose String // "REGISTER" | "RESET_PASSWORD" | "MFA"
+  channel String // "EMAIL" | "SMS"
+  isUsed  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId, purpose])
+  @@map("otp_codes")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 3 – KYC
+// ─────────────────────────────────────────────────────────────
+
+/// Dossier KYC d'un utilisateur (un seul dossier par user)
+model KycRecord {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status       KycStatus @default(PENDING)
+  submittedAt  DateTime?
+  reviewedAt   DateTime?
+  reviewedById String? // UUID de l'Admin ayant traité le dossier
+
+  // Notes de l'Admin (rejet ou validation)
+  adminNotes String?
+  reviewedBy User?   @relation("KycReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  documents KycDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([reviewedById])
+  @@map("kyc_records")
+}
+
+/// Document individuel d'un dossier KYC
+model KycDocument {
+  id          String    @id @default(uuid())
+  kycRecordId String
+  kycRecord   KycRecord @relation(fields: [kycRecordId], references: [id], onDelete: Cascade)
+
+  documentType  KycDocumentType
+  fileUrl       String // URL sécurisée (S3/MinIO)
+  fileName      String
+  fileSizeBytes Int
+  mimeType      String
+
+  isVerified Boolean   @default(false)
+  verifiedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([kycRecordId])
+  @@map("kyc_documents")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 4 – CATALOGUE & STOCKS (Fournisseur)
+// ─────────────────────────────────────────────────────────────
+
+/// Catégorie de produit (nom multilingue JSON)
+model Category {
+  id       String     @id @default(uuid())
+  name     Json // { fr: "...", en: "...", ar: "..." }
+  slug     String     @unique
+  parentId String?
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+
+  @@map("categories")
+}
+
+/// Produit du catalogue (Fournisseur)
+model Product {
+  id         String @id @default(uuid())
+  supplierId String
+  supplier   User   @relation(fields: [supplierId], references: [id])
+
+  sku        String    @unique // Code produit unique
+  name       Json // { fr, en, ar }
+  slug       String    @unique
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+
+  // Prix et stock
+  priceHT         Decimal @db.Decimal(15, 3) // Prix Hors Taxe
+  taxRate         Decimal @default(0.19) @db.Decimal(5, 4) // TVA (19% par défaut)
+  stockQuantity   Int     @default(0)
+  stockAlertLevel Int     @default(10) // Alerte si stock < N
+  unit            String? // ex: "kg", "pièce", "carton"
+
+  isActive Boolean @default(true)
+  isPublic Boolean @default(false) // Visible dans catalogue public
+
+  // Images
+  images       ProductImage[]
+  // Traductions longues (descriptions)
+  translations ProductTranslation[]
+  // Variantes (couleur, taille…)
+  variants     ProductVariant[]
+
+  orderItems OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([supplierId])
+  @@index([categoryId])
+  @@map("products")
+}
+
+/// Image d'un produit
+model ProductImage {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  url      String
+  altText  Json? // { fr, en, ar }
+  position Int    @default(0)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+/// Traductions longues (description, spécifications) – table séparée
+model ProductTranslation {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  lang        Lang
+  description String? @db.Text
+  specs       String? @db.Text // Spécifications techniques
+
+  @@unique([productId, lang])
+  @@map("product_translations")
+}
+
+/// Variante de produit (taille, couleur, conditionnement…)
+model ProductVariant {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  name          Json // { fr, en, ar }
+  sku           String   @unique
+  priceHT       Decimal? @db.Decimal(15, 3) // Surcharge de prix (null = prix parent)
+  stockQuantity Int      @default(0)
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 5 – COMMANDES & DEVIS
+// ─────────────────────────────────────────────────────────────
+
+/// Commande / Devis
+model Order {
+  id          String @id @default(uuid())
+  orderNumber String @unique // ex: CMD-2026-00001
+  clientId    String
+  client      User   @relation("ClientOrders", fields: [clientId], references: [id])
+  supplierId  String
+  supplier    User   @relation("SupplierOrders", fields: [supplierId], references: [id])
+
+  status  OrderStatus @default(DRAFT)
+  isQuote Boolean     @default(false) // true = Devis, false = Commande
+
+  // Montants
+  totalHT  Decimal @db.Decimal(15, 3)
+  totalTax Decimal @db.Decimal(15, 3)
+  totalTTC Decimal @db.Decimal(15, 3)
+  currency String  @default("TND")
+
+  // Adresse de livraison (snapshot au moment de la commande)
+  deliveryAddress Json?
+
+  // Notes
+  clientNotes   String? @db.Text
+  supplierNotes String? @db.Text
+
+  items     OrderItem[]
+  invoices  Invoice[]
+  shipments Shipment[]
+  payments  Payment[]   @relation("OrderPayments")
+  rooms     Room[]      @relation("RoomContext")
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  confirmedAt DateTime?
+  deliveredAt DateTime?
+
+  @@index([clientId])
+  @@index([supplierId])
+  @@index([status])
+  @@map("orders")
+}
+
+/// Compteur annuel pour numéros de commande atomiques
+model OrderCounter {
+  year  Int @id
+  value Int @default(0)
+
+  @@map("order_counters")
+}
+
+/// Ligne de commande
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  quantity    Int
+  unitPriceHT Decimal @db.Decimal(15, 3)
+  taxRate     Decimal @db.Decimal(5, 4)
+  totalHT     Decimal @db.Decimal(15, 3)
+  totalTTC    Decimal @db.Decimal(15, 3)
+
+  // Snapshot du nom produit au moment de la commande
+  productNameSnapshot Json // { fr, en, ar }
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 6 – FACTURATION & PAIEMENT
+// ─────────────────────────────────────────────────────────────
+
+/// Facture
+model Invoice {
+  id            String @id @default(uuid())
+  invoiceNumber String @unique // FAC-2026-00001
+  orderId       String
+  order         Order  @relation(fields: [orderId], references: [id])
+
+  status   InvoiceStatus @default(DRAFT)
+  issuedAt DateTime?
+  dueDate  DateTime?
+  paidAt   DateTime?
+
+  totalHT  Decimal @db.Decimal(15, 3)
+  totalTax Decimal @db.Decimal(15, 3)
+  totalTTC Decimal @db.Decimal(15, 3)
+  currency String  @default("TND")
+
+  pdfUrl String? // Lien vers le PDF généré
+
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orderId])
+  @@index([status])
+  @@map("invoices")
+}
+
+/// Paiement Multi-Gateway (CinetPay, FedaPay, Stripe)
+model Payment {
+  id        String   @id @default(uuid())
+  invoiceId String? // Optionnel car peut être lié à Order directement
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
+  orderId   String? // Lien direct vers Order
+  order     Order?   @relation("OrderPayments", fields: [orderId], references: [id])
+
+  // Provider de paiement
+  provider          String  @default("STRIPE") // CINETPAY, FEDAPAY, STRIPE
+  externalPaymentId String? // ID du paiement chez le provider externe
+
+  // Stripe (legacy)
+  stripePaymentIntentId String? @unique // PI Stripe
+  stripeChargeId        String? @unique
+
+  amount   Decimal       @db.Decimal(15, 3)
+  currency String        @default("TND")
+  status   PaymentStatus @default(PENDING)
+
+  // Métadonnées additionnelles (client, téléphone, etc.)
+  metadata Json?
+
+  paidAt        DateTime?
+  failureReason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([invoiceId, createdAt])
+  @@map("payments")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 7 – LOGISTIQUE & TRANSPORT
+// ─────────────────────────────────────────────────────────────
+
+/// Mission de transport
+model Shipment {
+  id             String @id @default(uuid())
+  shipmentNumber String @unique // EXP-2026-00001
+  orderId        String
+  order          Order  @relation(fields: [orderId], references: [id])
+  transporterId  String
+  transporter    User   @relation(fields: [transporterId], references: [id])
+
+  status            ShipmentStatus @default(ASSIGNED)
+  estimatedDelivery DateTime?
+  deliveredAt       DateTime?
+
+  // Adresses
+  pickupAddress   Json
+  deliveryAddress Json
+
+  // Véhicule
+  vehiclePlate String?
+  vehicleType  String?
+
+  events          ShipmentEvent[]
+  proofOfDelivery ProofOfDelivery?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([transporterId])
+  @@index([orderId])
+  @@index([status])
+  @@map("shipments")
+}
+
+/// Historique des événements d'une expédition (tracking)
+model ShipmentEvent {
+  id         String   @id @default(uuid())
+  shipmentId String
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  status    ShipmentStatus
+  location  String?
+  notes     String?        @db.Text
+  timestamp DateTime       @default(now())
+
+  @@index([shipmentId, timestamp])
+  @@map("shipment_events")
+}
+
+/// Preuve de livraison (photo + signature)
+model ProofOfDelivery {
+  id         String   @id @default(uuid())
+  shipmentId String   @unique
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  photoUrls    String[] // URLs vers les photos de livraison
+  signatureUrl String? // URL vers l'image de signature
+  receiverName String?
+  notes        String?  @db.Text
+  capturedAt   DateTime @default(now())
+
+  @@map("proofs_of_delivery")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 8 – COMPTABILITÉ & MOTEUR DE CALCUL
+// ─────────────────────────────────────────────────────────────
+
+/// Règle de calcul configurable par l'Admin (base 365 jours, formules)
+model CalculationRule {
+  id          String  @id @default(uuid())
+  name        Json // { fr, en, ar }
+  description Json? // { fr, en, ar }
+  baseDays    Int     @default(365)
+  formula     String // ex: "amount * (rate/100) * (days/baseDays)"
+  isActive    Boolean @default(true)
+
+  periods CalculationPeriod[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("calculation_rules")
+}
+
+/// Calcul effectué par un utilisateur (historique)
+model CalculationPeriod {
+  id     String          @id @default(uuid())
+  ruleId String
+  rule   CalculationRule @relation(fields: [ruleId], references: [id])
+  userId String
+  user   User            @relation(fields: [userId], references: [id])
+
+  amount    Decimal  @db.Decimal(15, 3)
+  startDate DateTime
+  endDate   DateTime
+  days      Int // Calculé : endDate - startDate
+  rate      Decimal  @db.Decimal(10, 6) // ex: 0.12 pour 12%
+  result    Decimal  @db.Decimal(15, 3)
+  detail    Json? // Détail du calcul étape par étape
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([ruleId])
+  @@map("calculation_periods")
+}
+
+/// Journal comptable
+model AccountingEntry {
+  id            String  @id @default(uuid())
+  entryNumber   String  @unique // JRN-2026-00001
+  label         String  @db.Text
+  debitAccount  String // Code compte (ex: "401")
+  creditAccount String
+  amount        Decimal @db.Decimal(15, 3)
+  currency      String  @default("TND")
+  referenceType String? // "INVOICE" | "PAYMENT" | "SHIPMENT"
+  referenceId   String? // UUID de la référence
+
+  entryDate DateTime
+  createdAt DateTime @default(now())
+
+  @@index([entryDate])
+  @@map("accounting_entries")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 9 – DOCUMENTS GÉNÉRÉS
+// ─────────────────────────────────────────────────────────────
+
+/// Document généré (PDF, Word, Excel) lié à un élément métier
+model GeneratedDocument {
+  id            String       @id @default(uuid())
+  documentType  DocumentType
+  referenceType String? // "ORDER" | "INVOICE" | "SHIPMENT" | "ROOM" | …
+  referenceId   String?
+  generatedById String // UUID de l'utilisateur ayant généré le doc
+  generatedBy   User         @relation("GeneratedDocumentCreator", fields: [generatedById], references: [id])
+
+  title         Json // { fr, en, ar }
+  fileUrl       String
+  fileName      String
+  fileSizeBytes Int
+  mimeType      String // "application/pdf" | "application/vnd.openxmlformats…"
+
+  createdAt DateTime @default(now())
+
+  @@index([referenceType, referenceId])
+  @@index([generatedById])
+  @@map("generated_documents")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 10 – OCR INTELLIGENT (IDP)
+// ─────────────────────────────────────────────────────────────
+
+/// Document importé via OCR
+model OcrDocument {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  originalFileName String
+  originalFileUrl  String
+  mimeType         String
+  fileSizeBytes    Int
+
+  status         OcrStatus @default(UPLOADED)
+  extractedData  Json? // Données brutes extraites par le moteur OCR
+  normalizedData Json? // Données après analyse sémantique par le LLM
+  targetModule   String? // Module cible identifié (ex: "CONTRACTS", "HR")
+  routedAt       DateTime?
+
+  hasDynamicFields Boolean @default(false) // true si des nouveaux champs ont été proposés
+  processingError  String?
+
+  dynamicFields DynamicFieldSchema[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("ocr_documents")
+}
+
+/// Nouveau champ dynamique proposé par l'IA OCR, à valider par l'Admin
+model DynamicFieldSchema {
+  id            String      @id @default(uuid())
+  ocrDocumentId String
+  ocrDocument   OcrDocument @relation(fields: [ocrDocumentId], references: [id], onDelete: Cascade)
+
+  fieldName    String // ex: "clauseConfidentialite"
+  fieldLabel   Json // { fr: "Clause de confidentialité", en: "...", ar: "..." }
+  fieldType    String // "TEXT" | "NUMBER" | "DATE" | "BOOLEAN" | "JSON"
+  targetModule String // Module cible
+  sampleValue  String? // Valeur exemple extraite du document
+
+  isApproved   Boolean? // null = en attente, true = approuvé, false = refusé
+  approvedById String? // UUID de l'Admin
+  approvedBy   User?     @relation("DynamicFieldApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt   DateTime?
+  adminNotes   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([ocrDocumentId])
+  @@index([isApproved])
+  @@index([approvedById])
+  @@map("dynamic_field_schemas")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 11 – ASSISTANT IA VOCAL
+// ─────────────────────────────────────────────────────────────
+
+/// Log des commandes vocales/textuelles de l'Assistant IA
+model VoiceCommandLog {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  inputType       String // "VOICE" | "TEXT"
+  commandText     String  @db.Text // Transcription STT ou saisie texte
+  detectedIntent  String? // Intention identifiée (ex: "NAVIGATE_MODULE")
+  intentParams    Json? // Paramètres de l'intention (ex: { module: "/calcul" })
+  actionTriggered String? // Action exécutée
+  responseText    String? @db.Text // Réponse textuelle de l'IA
+  lang            Lang    @default(FR)
+
+  processingMs Int? // Temps de traitement en millisecondes
+  isSuccess    Boolean @default(true)
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("voice_command_logs")
+}
+
+/// Configuration de l'Assistant IA (par l'Admin)
+model AiAssistantConfig {
+  id String @id @default(uuid())
+
+  systemPromptFr String @db.Text
+  systemPromptEn String @db.Text
+  systemPromptAr String @db.Text
+  modelName      String @default("gpt-4o")
+  temperature    Float  @default(0.3)
+  maxTokens      Int    @default(1024)
+  sttProvider    String @default("openai-whisper") // "openai-whisper" | "azure" | "google"
+  ttsProvider    String @default("openai-tts") // "openai-tts" | "elevenlabs"
+  ttsVoice       String @default("alloy")
+
+  isActive  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  @@map("ai_assistant_configs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 12 – ROOM LIVE (WebRTC + Socket.io)
+// ─────────────────────────────────────────────────────────────
+
+/// Salle de réunion Room Live
+model Room {
+  id       String     @id @default(uuid())
+  roomCode String     @unique // Code court ex: "TL-XK9F2" (pour rejoindre)
+  title    String // Titre de la réunion
+  type     RoomType   @default(INSTANT)
+  status   RoomStatus @default(WAITING)
+
+  // Hôte
+  hostId String
+  host   User   @relation("RoomHost", fields: [hostId], references: [id])
+
+  // Contexte métier optionnel (lié à une commande, ticket…)
+  contextType  String? // "ORDER" | "TICKET" | "SHIPMENT"
+  contextId    String? // UUID de l'élément lié
+  contextOrder Order?  @relation("RoomContext", fields: [contextId], references: [id])
+
+  // Configuration
+  waitingRoomEnabled Boolean @default(true)
+  recordingEnabled   Boolean @default(false)
+  maxParticipants    Int     @default(10)
+
+  // Sécurité : token JWT signé à durée limitée
+  inviteToken     String?   @unique // SHA-256 hash of the high-entropy invitation token
+  inviteExpiresAt DateTime?
+  notes           String?   @db.Text
+
+  // Dates
+  scheduledAt DateTime?
+  startedAt   DateTime?
+  endedAt     DateTime?
+
+  // Enregistrement et IA
+  recordingUrl       String? // URL du fichier enregistré (S3/MinIO)
+  transcriptText     String?   @db.Text // Transcription complète
+  aiSummary          Json? // { decisions: [], actions: [], participants: [] }
+  summaryGeneratedAt DateTime?
+
+  participants RoomParticipant[]
+  chatMessages RoomChatMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hostId])
+  @@index([status])
+  @@index([contextType, contextId])
+  @@map("rooms")
+}
+
+/// Participant à une Room Live
+model RoomParticipant {
+  id     String @id @default(uuid())
+  roomId String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  participantRole ParticipantRole   @default(PARTICIPANT)
+  status          ParticipantStatus @default(ADMITTED)
+
+  // Permissions
+  canShareScreen Boolean @default(true)
+  canRecord      Boolean @default(false)
+
+  // Statuts en temps réel (géré côté socket, stocké à la fin)
+  joinedAt        DateTime?
+  leftAt          DateTime?
+  durationSeconds Int?
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@map("room_participants")
+}
+
+/// Message de chat dans une Room Live
+model RoomChatMessage {
+  id       String @id @default(uuid())
+  roomId   String
+  room     Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  senderId String
+  sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  message  String  @db.Text
+  fileUrl  String? // Si partage de fichier
+  fileName String?
+
+  sentAt DateTime @default(now())
+
+  @@index([roomId])
+  @@map("room_chat_messages")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 13 – SUPPORT & TICKETS
+// ─────────────────────────────────────────────────────────────
+
+model Ticket {
+  id           String  @id @default(uuid())
+  ticketNumber String  @unique // TKT-2026-00001
+  createdById  String
+  createdBy    User    @relation("TicketCreator", fields: [createdById], references: [id])
+  assignedToId String?
+  assignedTo   User?   @relation("TicketAssignee", fields: [assignedToId], references: [id])
+
+  subject  String
+  status   String  @default("OPEN") // "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED"
+  priority String  @default("MEDIUM") // "LOW" | "MEDIUM" | "HIGH" | "URGENT"
+  category String? // "TECHNICAL" | "BILLING" | "LOGISTICS" | "OTHER"
+
+  // Contexte métier
+  contextType String?
+  contextId   String?
+
+  messages TicketMessage[]
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  resolvedAt DateTime?
+
+  @@index([createdById])
+  @@index([assignedToId])
+  @@index([status])
+  @@map("tickets")
+}
+
+model TicketMessage {
+  id       String @id @default(uuid())
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId String
+  sender   User   @relation(fields: [senderId], references: [id])
+
+  message        String  @db.Text
+  isAiSuggestion Boolean @default(false) // Réponse suggérée par l'IA
+  attachmentUrl  String?
+
+  sentAt DateTime @default(now())
+
+  @@index([ticketId, sentAt])
+  @@index([senderId])
+  @@map("ticket_messages")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 14 – NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title   Json // { fr, en, ar }
+  body    Json // { fr, en, ar }
+  channel NotificationChannel @default(IN_APP)
+  status  NotificationStatus  @default(PENDING)
+
+  // Lien contextuel
+  actionUrl   String?
+  contextType String?
+  contextId   String?
+
+  isRead Boolean   @default(false)
+  readAt DateTime?
+  sentAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 15 – BOUTONS FLOTTANTS (Administrables)
+// ─────────────────────────────────────────────────────────────
+
+model FloatingButton {
+  id String @id @default(uuid())
+
+  title      Json // { fr, en, ar }
+  icon       String // Nom d'icône (ex: "calculator", "phone")
+  color      String               @default("#1D4ED8") // Couleur HEX
+  targetUrl  String // Route interne ou URL externe
+  targetRole FloatingButtonTarget @default(ALL)
+
+  isActive      Boolean @default(true)
+  positionOrder Int     @default(0) // Ordre d'affichage
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("floating_buttons")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 16 – AUDIT LOGS & SÉCURITÉ
+// ─────────────────────────────────────────────────────────────
+
+/// Log d'audit immuable (pas de UPDATE ni DELETE via Prisma – géré par policy DB)
+model AuditLog {
+  id      String  @id @default(uuid())
+  actorId String? // null si action système
+  actor   User?   @relation("AuditActor", fields: [actorId], references: [id])
+
+  action     AuditAction
+  targetType String? // "USER" | "ORDER" | "KYC" | "PRODUCT" | …
+  targetId   String? // UUID de l'entité concernée
+
+  metadata  Json? // Détails de l'action (champs modifiés, valeurs avant/après)
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([action])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+/// Configuration système (clé / valeur) – paramètres globaux Admin
+model SystemConfig {
+  id          String  @id @default(uuid())
+  key         String  @unique // ex: "kyc_deadline_days", "smtp_host"
+  value       String  @db.Text
+  description String?
+  isSecret    Boolean @default(false) // Masqué dans l'UI si true
+
+  updatedAt   DateTime @updatedAt
+  updatedById String? // UUID de l'Admin
+  updatedBy   User?    @relation("SystemConfigUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([updatedById])
+  @@map("system_configs")
+}
