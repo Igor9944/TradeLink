@@ -9,6 +9,7 @@ uploads/
 .cache/
 coverage/
 .DS_Store
+*.tsbuildinfo
 *.pem
 *.key
 playwright-report/
